@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fotobås</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef0f7;--card:#fff;--ink:#1d1b2e;--mute:#5f5c76;--line:#d3d6e6;--accent:#d62a62;--on:#fff;--tint:#fbe3ec;color-scheme:light;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15131f;--card:#1f1c2e;--ink:#f1eefb;--mute:#aaa6c4;--line:#36324c;--accent:#ff5c8a;--on:#15131f;--tint:#3a1c2b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15131f;--card:#1f1c2e;--ink:#f1eefb;--mute:#aaa6c4;--line:#36324c;--accent:#ff5c8a;--on:#15131f;--tint:#3a1c2b;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:500 16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,.display,button.primary{font-family:"Bricolage Grotesque",system-ui,sans-serif}
+#app{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+#stage{display:grid;justify-items:center}
+#vf{--ar:.783;position:relative;aspect-ratio:var(--ar);width:min(100%,calc(62vh * var(--ar)));background:#000;border-radius:18px;overflow:hidden}
+#cam{width:100%;height:100%;object-fit:cover;display:block}
+#cam.mirror{transform:scaleX(-1)}
+.c{position:absolute;width:24px;height:24px;border:0 solid #fff;opacity:.85}
+.tl{top:12px;left:12px;border-top-width:3px;border-left-width:3px}
+.tr{top:12px;right:12px;border-top-width:3px;border-right-width:3px}
+.bl{bottom:12px;left:12px;border-bottom-width:3px;border-left-width:3px}
+.br{bottom:12px;right:12px;border-bottom-width:3px;border-right-width:3px}
+#count{position:absolute;inset:0;display:grid;place-items:center;font:800 clamp(96px,30vw,220px)/1 "Bricolage Grotesque",system-ui,sans-serif;color:#fff;text-shadow:0 4px 32px rgba(0,0,0,.55);pointer-events:none}
+#step{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:4px 12px;border-radius:99px;font-size:14px}
+#step:empty{display:none}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .35s;pointer-events:none}
+#flash.on{opacity:1;transition:none}
+#status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:#fff;background:rgba(0,0,0,.7)}
+#status p{margin:0;max-width:30ch}
+#result{display:block;max-width:100%;max-height:62vh;aspect-ratio:2/3;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:14px}
+fieldset{border:0;padding:0;margin:0}
+legend{padding:0 0 6px;color:var(--mute);font-size:14px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg span{display:block;padding:12px 6px;text-align:center;border:1.5px solid var(--line);border-radius:12px}
+.seg input:checked+span{border-color:var(--accent);background:var(--tint);font-weight:700}
+.seg input:focus-visible+span,button:focus-visible,#title:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.field{display:grid;gap:6px;color:var(--mute);font-size:14px}
+#title{width:100%;box-sizing:border-box;padding:12px;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px}
+button{font:inherit;cursor:pointer}
+button.primary{width:100%;padding:16px;font-size:20px;font-weight:800;color:var(--on);background:var(--accent);border:0;border-radius:14px}
+button.primary:disabled{opacity:.45;cursor:default}
+button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.5px solid var(--line);border-radius:12px}
+#status button.ghost{color:#fff;border-color:#fff}
+.row{display:grid;gap:10px}
+.hint{margin:0;color:var(--mute);font-size:14px;text-align:center}
+#sheet{display:none}
+@page{size:100mm 148mm;margin:0}
+@media print{:root{padding:0}html,body{background:#fff}#app{display:none}#sheet{display:block}#sheet img{display:block;width:100mm;height:148mm}}
+@media(prefers-reduced-motion:reduce){#flash{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>Fotobås</h1><button id="flip" class="ghost" type="button">Byt kamera</button></header>
+
+  <section id="stage">
+    <div id="vf">
+      <video id="cam" playsinline muted autoplay></video>
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+      <div id="count"></div><div id="step"></div><div id="flash"></div>
+      <div id="status"><p id="msg">Startar kameran…</p><button id="retry" class="ghost" type="button" hidden>Försök igen</button><button id="alt" class="ghost" type="button" hidden>Använd kamera-appen istället</button><input id="pick" type="file" accept="image/*" capture="user" hidden></div>
+    </div>
+    <img id="result" alt="Färdig bild" hidden>
+  </section>
+
+  <section id="setup" class="card">
+    <fieldset>
+      <legend>Layout</legend>
+      <div class="seg">
+        <label><input type="radio" name="lay" value="single"><span>En bild</span></label>
+        <label><input type="radio" name="lay" value="strip" checked><span>Dubbel remsa</span></label>
+        <label><input type="radio" name="lay" value="grid"><span>Fyra rutor</span></label>
+      </div>
+    </fieldset>
+    <label class="field">Rubrik på bilden
+      <input id="title" maxlength="28" placeholder="Till exempel Vårfesten 2026" autocomplete="off">
+    </label>
+    <button id="go" class="primary" type="button" disabled>Ta bilder</button>
+  </section>
+
+  <section id="done" class="row" hidden>
+    <button id="print" class="primary" type="button">Skriv ut</button>
+    <button id="again" class="ghost" type="button">Ta nya bilder</button>
+    <p id="hint" class="hint">Välj pappersstorlek 10×15 cm i utskriftsdialogen.</p>
+  </section>
+</div>
+<div id="sheet"><img id="sheetImg" alt=""></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const L={
+  single:{n:1,ty:1640,sz:92,tw:1080,tx:[600],r:[[60,60,1080,1380]]},
+  strip:{n:4,ty:1700,sz:64,tw:520,tx:[300,900],r:[[40,40,520,375],[40,435,520,375],[40,830,520,375],[40,1225,520,375],[640,40,520,375],[640,435,520,375],[640,830,520,375],[640,1225,520,375]]},
+  grid:{n:4,ty:1650,sz:92,tw:1080,tx:[600],r:[[60,60,525,690],[615,60,525,690],[60,780,525,690],[615,780,525,690]]}
+};
+let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[];
+const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+function setLayout(k){layout=k;const r=L[k].r[0];$('vf').style.setProperty('--ar',(r[2]/r[3]).toFixed(3));}
+function say(t,retry){$('msg').textContent=t;$('retry').hidden=!retry;$('alt').hidden=!retry;$('status').hidden=!t;}
+function fileLabel(){const n=L[layout].n;return n>1?'Ta bild '+(fshots.length+1)+' av '+n:'Ta bild';}
+function startFile(){mode='file';fshots=[];$('vf').hidden=true;$('flip').hidden=true;say('');$('go').disabled=false;$('go').textContent=fileLabel();}
+
+async function startCam(){
+  say('Startar kameran…');$('go').disabled=true;
+  try{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1920},height:{ideal:1080}},audio:false});
+    cam.srcObject=stream;
+    cam.classList.toggle('mirror',facing==='user');
+    await cam.play();
+    say('');$('go').disabled=false;
+  }catch(e){
+    say('Kameran kan inte startas här ('+((e&&e.name)||'okänt fel')+').',true);
+  }
+}
+
+function grab(){
+  const c=document.createElement('canvas');c.width=cam.videoWidth;c.height=cam.videoHeight;
+  const x=c.getContext('2d');
+  if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
+  x.drawImage(cam,0,0);return c;
+}
+function cover(x,s,dx,dy,dw,dh){
+  const k=Math.max(dw/s.width,dh/s.height),sw=dw/k,sh=dh/k;
+  x.drawImage(s,(s.width-sw)/2,(s.height-sh)/2,sw,sh,dx,dy,dw,dh);
+}
+function flash(){const f=$('flash');f.classList.add('on');setTimeout(()=>f.classList.remove('on'),120);}
+
+function compose(shots){
+  const c=document.createElement('canvas');c.width=1200;c.height=1800;
+  const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,1200,1800);
+  const P=L[layout];P.r.forEach((r,i)=>cover(x,shots[i%shots.length],r[0],r[1],r[2],r[3]));
+  if(layout==='strip'){x.strokeStyle='#cfcfd6';x.lineWidth=2;x.setLineDash([14,14]);x.beginPath();x.moveTo(600,0);x.lineTo(600,1800);x.stroke();x.setLineDash([]);}
+  const t=$('title').value.trim();
+  if(t){
+    let s=P.sz;x.textAlign='center';x.textBaseline='middle';x.fillStyle='#1d1b2e';
+    do{x.font='800 '+s+'px "Bricolage Grotesque",system-ui,sans-serif';s-=4;}while(x.measureText(t).width>P.tw&&s>28);
+    P.tx.forEach(px=>x.fillText(t,px,P.ty));
+  }
+  const url=c.toDataURL('image/jpeg',.92);
+  $('result').src=url;$('sheetImg').src=url;
+  $('vf').hidden=true;$('setup').hidden=true;$('result').hidden=false;$('done').hidden=false;
+}
+
+async function run(){
+  if(busy)return;busy=true;$('setup').hidden=true;
+  const n=L[layout].n,shots=[];
+  for(let i=1;i<=n;i++){
+    $('step').textContent=n>1?'Bild '+i+' av '+n:'';
+    for(let c=3;c>0;c--){$('count').textContent=c;await wait(1000);}
+    $('count').textContent='';
+    shots.push(grab());flash();await wait(700);
+  }
+  $('step').textContent='';
+  compose(shots);busy=false;
+}
+
+function again(){
+  $('result').hidden=true;$('done').hidden=true;$('vf').hidden=mode==='file';$('setup').hidden=false;
+  $('hint').textContent='Välj pappersstorlek 10×15 cm i utskriftsdialogen.';
+}
+
+document.querySelectorAll('input[name=lay]').forEach(i=>i.addEventListener('change',()=>{setLayout(i.value);if(mode==='file'){fshots=[];$('go').textContent=fileLabel();}}));
+$('go').addEventListener('click',()=>{if(mode==='file')$('pick').click();else run();});
+$('alt').addEventListener('click',startFile);
+$('pick').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{fshots.push(await createImageBitmap(f));}catch(err){return;}
+  if(fshots.length<L[layout].n){$('go').textContent=fileLabel();return;}
+  compose(fshots);fshots=[];$('go').textContent=fileLabel();
+});
+$('again').addEventListener('click',again);
+$('retry').addEventListener('click',startCam);
+$('flip').addEventListener('click',()=>{facing=facing==='user'?'environment':'user';startCam();});
+$('print').addEventListener('click',()=>{
+  try{window.print();}catch(e){$('hint').textContent='Utskrift stöds inte här. Öppna sidan direkt i webbläsaren och försök igen.';}
+});
+setLayout('strip');startCam();
+</script>
+</body>
+</html>
