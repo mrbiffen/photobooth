@@ -20,9 +20,11 @@ h1,.display,button.primary{font-family:"Bricolage Grotesque",system-ui,sans-seri
 header{display:flex;justify-content:space-between;align-items:center}
 h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
 #stage{display:grid;justify-items:center}
-#vf{--ar:.783;position:relative;aspect-ratio:var(--ar);width:min(100%,calc(62vh * var(--ar)));background:#000;border-radius:18px;overflow:hidden}
+#vf{--ar:1.333;position:relative;aspect-ratio:var(--ar);width:min(100%,calc(62vh * var(--ar)));background:#000;border-radius:18px;overflow:hidden}
 #cam{width:100%;height:100%;object-fit:cover;display:block}
 #cam.mirror{transform:scaleX(-1)}
+#guide{position:absolute;left:0;top:0;width:100%;height:100%;box-sizing:border-box;border:2px solid rgba(255,255,255,.9);border-radius:6px;box-shadow:0 0 0 999px rgba(0,0,0,.5);pointer-events:none}
+.c{display:none}
 .c{position:absolute;width:24px;height:24px;border:0 solid #fff;opacity:.85}
 .tl{top:12px;left:12px;border-top-width:3px;border-left-width:3px}
 .tr{top:12px;right:12px;border-top-width:3px;border-right-width:3px}
@@ -54,6 +56,8 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 #status button.ghost{color:#fff;border-color:#fff}
 .row{display:grid;gap:10px}
 .hint{margin:0;color:var(--mute);font-size:14px;text-align:center}
+details summary{cursor:pointer;color:var(--mute);font-size:14px;padding:4px 0}
+input[type=range]{width:100%;accent-color:var(--accent)}
 #sheet{display:none}
 @page{size:100mm 148mm;margin:0}
 @media print{:root{padding:0}html,body{background:#fff}#app{display:none}#sheet{display:block}#sheet img{display:block;width:100mm;height:148mm}}
@@ -80,7 +84,7 @@ button.primary{padding:12px;font-size:18px}
 
   <section id="stage">
     <div id="vf">
-      <video id="cam" playsinline muted autoplay></video>
+      <video id="cam" playsinline muted autoplay></video><div id="guide"></div>
       <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
       <div id="count"></div><div id="step"></div><div id="flash"></div>
       <div id="status"><p id="msg">Startar kameran…</p><button id="retry" class="ghost" type="button" hidden>Försök igen</button><button id="alt" class="ghost" type="button" hidden>Använd kamera-appen istället</button><input id="pick" type="file" accept="image/*" capture="user" hidden></div>
@@ -100,6 +104,10 @@ button.primary{padding:12px;font-size:18px}
     <label class="field">Rubrik på bilden
       <input id="title" maxlength="28" placeholder="Till exempel Vårfesten 2026" autocomplete="off">
     </label>
+    <details><summary>Inställningar</summary>
+      <label class="field">Avtryck tidigare: <span><span id="leadv">1200</span> ms</span>
+        <input id="lead" type="range" min="0" max="3000" step="100" value="1200"></label>
+    </details>
     <button id="go" class="primary" type="button" disabled>Ta bilder</button>
   </section>
 
@@ -108,6 +116,7 @@ button.primary{padding:12px;font-size:18px}
     <button id="save" class="ghost" type="button">Spara på telefonen</button>
     <button id="again" class="ghost" type="button">Ta nya bilder</button>
     <p id="hint" class="hint">Välj pappersstorlek 10×15 cm i utskriftsdialogen.</p>
+    <p id="info" class="hint"></p>
   </section>
 </div>
 <div id="sheet"><img id="sheetImg" alt=""></div>
@@ -122,7 +131,13 @@ const L={
 let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[],lastCanvas=null;
 const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-function setLayout(k){layout=k;const r=L[k].r[0];$('vf').style.setProperty('--ar',(r[2]/r[3]).toFixed(3));}
+function fit(){
+  const vw=cam.videoWidth,vh=cam.videoHeight;if(!vw||!vh)return;
+  const v=vw/vh,r=L[layout].r[0],a=r[2]/r[3],w=a>v?1:a/v,h=a>v?v/a:1,g=$('guide').style;
+  $('vf').style.setProperty('--ar',v.toFixed(3));
+  g.width=(w*100)+'%';g.height=(h*100)+'%';g.left=((1-w)*50)+'%';g.top=((1-h)*50)+'%';
+}
+function setLayout(k){layout=k;fit();}
 function say(t,retry){$('msg').textContent=t;$('retry').hidden=!retry;$('alt').hidden=!retry;$('status').hidden=!t;}
 function fileLabel(){const n=L[layout].n;return n>1?'Ta bild '+(fshots.length+1)+' av '+n:'Ta bild';}
 function startFile(){mode='file';fshots=[];$('vf').hidden=true;$('flip').hidden=true;say('');$('go').disabled=false;$('go').textContent=fileLabel();}
@@ -131,9 +146,11 @@ async function startCam(){
   say('Startar kameran…');$('go').disabled=true;
   try{
     if(stream)stream.getTracks().forEach(t=>t.stop());
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:2048},height:{ideal:1536},aspectRatio:{ideal:4/3}},audio:false});
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1600},height:{ideal:1200},aspectRatio:{ideal:4/3},resizeMode:{ideal:'none'}},audio:false});
     cam.srcObject=stream;
     try{ic='ImageCapture' in window?new ImageCapture(stream.getVideoTracks()[0]):null;}catch(e){ic=null;}
+    pset=undefined;
+    if(ic)ic.getPhotoCapabilities().then(p=>{if(p.imageWidth&&p.imageHeight)pset={imageWidth:p.imageWidth.max,imageHeight:p.imageHeight.max};}).catch(()=>{});
     cam.classList.toggle('mirror',facing==='user');
     await cam.play();
     say('');$('go').disabled=false;
@@ -142,20 +159,31 @@ async function startCam(){
   }
 }
 
-let ic=null;
-async function grab(){
-  if(ic){try{
-    const b=await Promise.race([ic.takePhoto(),new Promise((_,j)=>setTimeout(j,4000))]);
-    const m=await createImageBitmap(b),k=Math.min(1,2000/Math.max(m.width,m.height));
-    const c=document.createElement('canvas');c.width=Math.round(m.width*k);c.height=Math.round(m.height*k);
+let ic=null,pset;
+async function still(){
+  if(!ic)return {why:'ImageCapture saknas'};
+  const t=performance.now();
+  const tp=s=>Promise.race([ic.takePhoto(s),new Promise((_,j)=>setTimeout(()=>j('timeout'),5000))]);
+  try{
+    const b=await tp(pset).catch(e=>pset?tp():Promise.reject(e));
+    const dt=performance.now()-t;
+    const m=await createImageBitmap(b),v=cam.videoWidth/cam.videoHeight;
+    if((m.width>m.height)!==(v>1)){m.close();throw 'bildriktning';}
+    let sw=m.width,sh=m.height;if(sw/sh>v)sw=Math.round(sh*v);else sh=Math.round(sw/v);
+    const sx=(m.width-sw)/2,sy=(m.height-sh)/2,k=Math.min(1,2000/Math.max(sw,sh));
+    const c=document.createElement('canvas');c.width=Math.round(sw*k);c.height=Math.round(sh*k);
     const x=c.getContext('2d');
     if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
-    x.drawImage(m,0,0,c.width,c.height);m.close();return c;
-  }catch(e){}}
+    x.drawImage(m,sx,sy,sw,sh,0,0,c.width,c.height);
+    c.info='Stillfoto '+m.width+'×'+m.height+', tog '+(dt/1000).toFixed(1).replace('.',',')+' s';
+    m.close();return {c};
+  }catch(e){return {why:String((e&&e.name)||e)};}
+}
+function frame(){
   const c=document.createElement('canvas');c.width=cam.videoWidth;c.height=cam.videoHeight;
   const x=c.getContext('2d');
   if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
-  x.drawImage(cam,0,0);return c;
+  x.drawImage(cam,0,0);c.info='Framegrab '+c.width+'×'+c.height;return c;
 }
 function cover(x,s,dx,dy,dw,dh){
   const k=Math.max(dw/s.width,dh/s.height),sw=dw/k,sh=dh/k;
@@ -175,7 +203,10 @@ function compose(shots){
     do{x.font='800 '+s+'px "Bricolage Grotesque",system-ui,sans-serif';s-=4;}while(x.measureText(t).width>P.tw&&s>28);
     P.tx.forEach(px=>x.fillText(t,px,P.ty));
   }
-  lastCanvas=c;const url=c.toDataURL('image/jpeg',.92);
+  lastCanvas=c;
+  {const f=shots.filter(s=>s.info),st=f.filter(s=>s.info.startsWith('Stillfoto')).length;
+   $('info').textContent=f.length?st+' av '+f.length+' stillfoton. '+f[f.length-1].info:'';}
+  const url=c.toDataURL('image/jpeg',.92);
   $('result').src=url;$('sheetImg').src=url;
   $('vf').hidden=true;$('setup').hidden=true;$('result').hidden=false;$('done').hidden=false;
 }
@@ -185,9 +216,15 @@ async function run(){
   const n=L[layout].n,shots=[];
   for(let i=1;i<=n;i++){
     $('step').textContent=n>1?'Bild '+i+' av '+n:'';
-    for(let c=5;c>0;c--){$('count').textContent=c;await wait(1000);}
-    $('count').textContent='';
-    const g=grab();flash();shots.push(await g);await wait(700);
+    const T=5000,ld=Math.min(+$('lead').value||0,T-500),t0=performance.now();
+    let sp=null;const tm=setTimeout(()=>{sp=still();},T-ld);
+    for(let c=5;c>0;c--){$('count').textContent=c;await wait(Math.max(0,t0+(6-c)*1000-performance.now()));}
+    clearTimeout(tm);$('count').textContent='';
+    if(!sp)sp=still();
+    const fb=frame();flash();
+    const res=await sp,pic=res.c||fb;
+    if(!res.c)pic.info=fb.info+(res.why?' ('+res.why+')':'');
+    shots.push(pic);await wait(700);
   }
   $('step').textContent='';
   compose(shots);busy=false;
@@ -224,6 +261,11 @@ $('save').addEventListener('click',()=>{
     $('hint').textContent='Sparad i mappen Hämtade filer på telefonen.';
   },'image/jpeg',.92);
 });
+const lead=$('lead');
+try{const s=localStorage.getItem('lead');if(s!==null)lead.value=s;}catch(e){}
+function showLead(){$('leadv').textContent=lead.value;try{localStorage.setItem('lead',lead.value);}catch(e){}}
+lead.addEventListener('input',showLead);showLead();
+cam.addEventListener('loadedmetadata',fit);cam.addEventListener('resize',fit);
 setLayout('strip');startCam();
 </script>
 </body>
