@@ -160,7 +160,7 @@ async function run(){
   const n=L[layout].n,shots=[];
   for(let i=1;i<=n;i++){
     $('step').textContent=n>1?'Bild '+i+' av '+n:'';
-    for(let c=3;c>0;c--){$('count').textContent=c;await wait(1000);}
+    for(let c=5;c>0;c--){$('count').textContent=c;await wait(1000);}
     $('count').textContent='';
     shots.push(grab());flash();await wait(700);
   }
