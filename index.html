@@ -28,7 +28,7 @@ h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
 .tr{top:12px;right:12px;border-top-width:3px;border-right-width:3px}
 .bl{bottom:12px;left:12px;border-bottom-width:3px;border-left-width:3px}
 .br{bottom:12px;right:12px;border-bottom-width:3px;border-right-width:3px}
-#count{position:absolute;inset:0;display:grid;place-items:center;font:800 clamp(96px,30vw,220px)/1 "Bricolage Grotesque",system-ui,sans-serif;color:#fff;text-shadow:0 4px 32px rgba(0,0,0,.55);pointer-events:none}
+#count{position:absolute;inset:0;display:grid;place-items:center;font:800 clamp(64px,min(30vw,42dvh),220px)/1 "Bricolage Grotesque",system-ui,sans-serif;color:#fff;text-shadow:0 4px 32px rgba(0,0,0,.55);pointer-events:none}
 #step{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:4px 12px;border-radius:99px;font-size:14px}
 #step:empty{display:none}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .35s;pointer-events:none}
@@ -57,6 +57,20 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 #sheet{display:none}
 @page{size:100mm 148mm;margin:0}
 @media print{:root{padding:0}html,body{background:#fff}#app{display:none}#sheet{display:block}#sheet img{display:block;width:100mm;height:148mm}}
+@media screen and (orientation:landscape) and (min-aspect-ratio:5/4){
+:root{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#app{max-width:1000px;padding:12px 16px;column-gap:16px;grid-template-columns:minmax(0,1fr) minmax(250px,340px);grid-template-areas:"stage head" "stage side";grid-template-rows:auto 1fr;align-items:start}
+header{grid-area:head}
+h1{font-size:22px}
+#stage{grid-area:stage;align-self:center}
+#setup,#done{grid-area:side}
+#vf{width:min(100%,calc((100vh - 40px) * var(--ar)));width:min(100%,calc((100dvh - 40px) * var(--ar)))}
+#result{max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px)}
+.card{padding:12px;gap:10px}
+.seg span{padding:8px 4px}
+#title{padding:9px 12px}
+button.primary{padding:12px;font-size:18px}
+}
 @media(prefers-reduced-motion:reduce){#flash{transition:none}}
 </style>
 </head>
@@ -91,6 +105,7 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 
   <section id="done" class="row" hidden>
     <button id="print" class="primary" type="button">Skriv ut</button>
+    <button id="save" class="ghost" type="button">Spara på telefonen</button>
     <button id="again" class="ghost" type="button">Ta nya bilder</button>
     <p id="hint" class="hint">Välj pappersstorlek 10×15 cm i utskriftsdialogen.</p>
   </section>
@@ -101,10 +116,10 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 const $=id=>document.getElementById(id);
 const L={
   single:{n:1,ty:1640,sz:92,tw:1080,tx:[600],r:[[60,60,1080,1380]]},
-  strip:{n:4,ty:1700,sz:64,tw:520,tx:[300,900],r:[[40,40,520,375],[40,435,520,375],[40,830,520,375],[40,1225,520,375],[640,40,520,375],[640,435,520,375],[640,830,520,375],[640,1225,520,375]]},
+  strip:{n:4,ty:1730,sz:64,tw:520,tx:[300,900],r:[[40,40,520,390],[40,450,520,390],[40,860,520,390],[40,1270,520,390],[640,40,520,390],[640,450,520,390],[640,860,520,390],[640,1270,520,390]]},
   grid:{n:4,ty:1650,sz:92,tw:1080,tx:[600],r:[[60,60,525,690],[615,60,525,690],[60,780,525,690],[615,780,525,690]]}
 };
-let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[];
+let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[],lastCanvas=null;
 const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 function setLayout(k){layout=k;const r=L[k].r[0];$('vf').style.setProperty('--ar',(r[2]/r[3]).toFixed(3));}
@@ -116,8 +131,9 @@ async function startCam(){
   say('Startar kameran…');$('go').disabled=true;
   try{
     if(stream)stream.getTracks().forEach(t=>t.stop());
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1920},height:{ideal:1080}},audio:false});
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:2048},height:{ideal:1536},aspectRatio:{ideal:4/3}},audio:false});
     cam.srcObject=stream;
+    try{ic='ImageCapture' in window?new ImageCapture(stream.getVideoTracks()[0]):null;}catch(e){ic=null;}
     cam.classList.toggle('mirror',facing==='user');
     await cam.play();
     say('');$('go').disabled=false;
@@ -126,7 +142,16 @@ async function startCam(){
   }
 }
 
-function grab(){
+let ic=null;
+async function grab(){
+  if(ic){try{
+    const b=await Promise.race([ic.takePhoto(),new Promise((_,j)=>setTimeout(j,4000))]);
+    const m=await createImageBitmap(b),k=Math.min(1,2000/Math.max(m.width,m.height));
+    const c=document.createElement('canvas');c.width=Math.round(m.width*k);c.height=Math.round(m.height*k);
+    const x=c.getContext('2d');
+    if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
+    x.drawImage(m,0,0,c.width,c.height);m.close();return c;
+  }catch(e){}}
   const c=document.createElement('canvas');c.width=cam.videoWidth;c.height=cam.videoHeight;
   const x=c.getContext('2d');
   if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
@@ -150,7 +175,7 @@ function compose(shots){
     do{x.font='800 '+s+'px "Bricolage Grotesque",system-ui,sans-serif';s-=4;}while(x.measureText(t).width>P.tw&&s>28);
     P.tx.forEach(px=>x.fillText(t,px,P.ty));
   }
-  const url=c.toDataURL('image/jpeg',.92);
+  lastCanvas=c;const url=c.toDataURL('image/jpeg',.92);
   $('result').src=url;$('sheetImg').src=url;
   $('vf').hidden=true;$('setup').hidden=true;$('result').hidden=false;$('done').hidden=false;
 }
@@ -162,7 +187,7 @@ async function run(){
     $('step').textContent=n>1?'Bild '+i+' av '+n:'';
     for(let c=5;c>0;c--){$('count').textContent=c;await wait(1000);}
     $('count').textContent='';
-    shots.push(grab());flash();await wait(700);
+    const g=grab();flash();shots.push(await g);await wait(700);
   }
   $('step').textContent='';
   compose(shots);busy=false;
@@ -187,6 +212,17 @@ $('retry').addEventListener('click',startCam);
 $('flip').addEventListener('click',()=>{facing=facing==='user'?'environment':'user';startCam();});
 $('print').addEventListener('click',()=>{
   try{window.print();}catch(e){$('hint').textContent='Utskrift stöds inte här. Öppna sidan direkt i webbläsaren och försök igen.';}
+});
+$('save').addEventListener('click',()=>{
+  if(!lastCanvas)return;
+  lastCanvas.toBlob(b=>{
+    if(!b){$('hint').textContent='Det gick inte att spara bilden.';return;}
+    const d=new Date(),p=n=>String(n).padStart(2,'0'),u=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=u;a.download='fotobas-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds())+'.jpg';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),5000);
+    $('hint').textContent='Sparad i mappen Hämtade filer på telefonen.';
+  },'image/jpeg',.92);
 });
 setLayout('strip');startCam();
 </script>
