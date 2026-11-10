@@ -56,6 +56,7 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 #status button.ghost{color:#fff;border-color:#fff}
 .row{display:grid;gap:10px}
 .hint{margin:0;color:var(--mute);font-size:14px;text-align:center}
+.tools{display:flex;gap:8px}
 details summary{cursor:pointer;color:var(--mute);font-size:14px;padding:4px 0}
 input[type=range]{width:100%;accent-color:var(--accent)}
 #sheet{display:none}
@@ -80,7 +81,7 @@ button.primary{padding:12px;font-size:18px}
 </head>
 <body>
 <div id="app">
-  <header><h1>Fotobås</h1><button id="flip" class="ghost" type="button">Byt kamera</button></header>
+  <header><h1>Fotobås</h1><div class="tools"><button id="rotb" class="ghost" type="button">Rotera bild</button><button id="flip" class="ghost" type="button">Byt kamera</button></div></header>
 
   <section id="stage">
     <div id="vf">
@@ -133,7 +134,7 @@ const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 function fit(){
   const vw=cam.videoWidth,vh=cam.videoHeight;if(!vw||!vh)return;
-  const v=vw/vh,r=L[layout].r[0],a=r[2]/r[3],w=a>v?1:a/v,h=a>v?v/a:1,g=$('guide').style;
+  const v=effRatio(),r=L[layout].r[0],a=r[2]/r[3],w=a>v?1:a/v,h=a>v?v/a:1,g=$('guide').style;
   $('vf').style.setProperty('--ar',v.toFixed(3));
   g.width=(w*100)+'%';g.height=(h*100)+'%';g.left=((1-w)*50)+'%';g.top=((1-h)*50)+'%';
 }
@@ -162,12 +163,13 @@ async function startCam(){
 let ic=null,pset;
 async function still(){
   if(!ic)return {why:'ImageCapture saknas'};
+  if(rot)return {why:'bildrotation aktiv'};
   const t=performance.now();
   const tp=s=>Promise.race([ic.takePhoto(s),new Promise((_,j)=>setTimeout(()=>j('timeout'),5000))]);
   try{
     const b=await tp(pset).catch(e=>pset?tp():Promise.reject(e));
     const dt=performance.now()-t;
-    const m=await createImageBitmap(b),v=cam.videoWidth/cam.videoHeight;
+    const m=await createImageBitmap(b),v=effRatio();
     if((m.width>m.height)!==(v>1)){m.close();throw 'bildriktning';}
     let sw=m.width,sh=m.height;if(sw/sh>v)sw=Math.round(sh*v);else sh=Math.round(sw/v);
     const sx=(m.width-sw)/2,sy=(m.height-sh)/2,k=Math.min(1,2000/Math.max(sw,sh));
@@ -180,10 +182,13 @@ async function still(){
   }catch(e){return {why:String((e&&e.name)||e)};}
 }
 function frame(){
-  const c=document.createElement('canvas');c.width=cam.videoWidth;c.height=cam.videoHeight;
+  const vw=cam.videoWidth,vh=cam.videoHeight,sw=rot%180!==0,c=document.createElement('canvas');
+  c.width=sw?vh:vw;c.height=sw?vw:vh;
   const x=c.getContext('2d');
-  if(facing==='user'){x.translate(c.width,0);x.scale(-1,1);}
-  x.drawImage(cam,0,0);c.info='Framegrab '+c.width+'×'+c.height;return c;
+  x.translate(c.width/2,c.height/2);
+  if(facing==='user')x.scale(-1,1);
+  x.rotate(rot*Math.PI/180);
+  x.drawImage(cam,-vw/2,-vh/2);c.info='Framegrab '+c.width+'×'+c.height;return c;
 }
 function cover(x,s,dx,dy,dw,dh){
   const k=Math.max(dw/s.width,dh/s.height),sw=dw/k,sh=dh/k;
@@ -261,11 +266,30 @@ $('save').addEventListener('click',()=>{
     $('hint').textContent='Sparad i mappen Hämtade filer på telefonen.';
   },'image/jpeg',.92);
 });
+let rot=0;
+const ang=()=>(screen.orientation&&screen.orientation.angle!=null)?screen.orientation.angle:(window.orientation||0);
+const effRatio=()=>rot%180?cam.videoHeight/cam.videoWidth:cam.videoWidth/cam.videoHeight;
+function applyRot(){
+  const sw=rot%180!==0,ve=(cam.videoWidth&&cam.videoHeight)?effRatio():1.333,s=cam.style;
+  s.position='absolute';s.left='50%';s.top='50%';
+  s.width=sw?(100/ve)+'%':'100%';s.height=sw?(100*ve)+'%':'100%';
+  s.transform='translate(-50%,-50%) '+(facing==='user'?'scaleX(-1) ':'')+'rotate('+rot+'deg)';
+  fit();
+}
+function loadRot(){
+  let s=null;try{s=localStorage.getItem('rot'+ang());}catch(e){}
+  if(s!==null)rot=+s;
+  else rot=(cam.videoWidth&&(innerHeight>innerWidth)!==(cam.videoHeight>cam.videoWidth))?90:0;
+  applyRot();
+}
+$('rotb').addEventListener('click',()=>{rot=(rot+90)%360;try{localStorage.setItem('rot'+ang(),rot);}catch(e){}applyRot();});
 const lead=$('lead');
 try{const s=localStorage.getItem('lead');if(s!==null)lead.value=s;}catch(e){}
 function showLead(){$('leadv').textContent=lead.value;try{localStorage.setItem('lead',lead.value);}catch(e){}}
 lead.addEventListener('input',showLead);showLead();
-cam.addEventListener('loadedmetadata',fit);cam.addEventListener('resize',fit);
+cam.addEventListener('loadedmetadata',loadRot);cam.addEventListener('resize',loadRot);
+if(screen.orientation)screen.orientation.addEventListener('change',()=>setTimeout(loadRot,200));
+window.addEventListener('orientationchange',()=>setTimeout(loadRot,200));
 setLayout('strip');startCam();
 </script>
 </body>
