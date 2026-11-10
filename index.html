@@ -56,7 +56,7 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 #status button.ghost{color:#fff;border-color:#fff}
 .row{display:grid;gap:10px}
 .hint{margin:0;color:var(--mute);font-size:14px;text-align:center}
-.tools{display:flex;gap:8px}
+details button{margin-top:10px}
 details summary{cursor:pointer;color:var(--mute);font-size:14px;padding:4px 0}
 input[type=range]{width:100%;accent-color:var(--accent)}
 #sheet{display:none}
@@ -81,7 +81,7 @@ button.primary{padding:12px;font-size:18px}
 </head>
 <body>
 <div id="app">
-  <header><h1>Fotobås</h1><div class="tools"><button id="rotb" class="ghost" type="button">Rotera bild</button><button id="flip" class="ghost" type="button">Byt kamera</button></div></header>
+  <header><h1>Fotobås</h1><button id="flip" class="ghost" type="button">Byt kamera</button></header>
 
   <section id="stage">
     <div id="vf">
@@ -108,6 +108,7 @@ button.primary{padding:12px;font-size:18px}
     <details><summary>Inställningar</summary>
       <label class="field">Avtryck tidigare: <span><span id="leadv">1200</span> ms</span>
         <input id="lead" type="range" min="0" max="3000" step="100" value="1200"></label>
+      <button id="rotb" class="ghost" type="button">Rotera kamerabild</button>
     </details>
     <button id="go" class="primary" type="button" disabled>Ta bilder</button>
   </section>
@@ -163,7 +164,6 @@ async function startCam(){
 let ic=null,pset;
 async function still(){
   if(!ic)return {why:'ImageCapture saknas'};
-  if(rot)return {why:'bildrotation aktiv'};
   const t=performance.now();
   const tp=s=>Promise.race([ic.takePhoto(s),new Promise((_,j)=>setTimeout(()=>j('timeout'),5000))]);
   try{
@@ -180,15 +180,6 @@ async function still(){
     c.info='Stillfoto '+m.width+'×'+m.height+', tog '+(dt/1000).toFixed(1).replace('.',',')+' s';
     m.close();return {c};
   }catch(e){return {why:String((e&&e.name)||e)};}
-}
-function frame(){
-  const vw=cam.videoWidth,vh=cam.videoHeight,sw=rot%180!==0,c=document.createElement('canvas');
-  c.width=sw?vh:vw;c.height=sw?vw:vh;
-  const x=c.getContext('2d');
-  x.translate(c.width/2,c.height/2);
-  if(facing==='user')x.scale(-1,1);
-  x.rotate(rot*Math.PI/180);
-  x.drawImage(cam,-vw/2,-vh/2);c.info='Framegrab '+c.width+'×'+c.height;return c;
 }
 function cover(x,s,dx,dy,dw,dh){
   const k=Math.max(dw/s.width,dh/s.height),sw=dw/k,sh=dh/k;
@@ -217,7 +208,7 @@ function compose(shots){
 }
 
 async function run(){
-  if(busy)return;busy=true;$('setup').hidden=true;
+  if(busy)return;busy=true;$('setup').hidden=true;say('');
   const n=L[layout].n,shots=[];
   for(let i=1;i<=n;i++){
     $('step').textContent=n>1?'Bild '+i+' av '+n:'';
@@ -226,10 +217,10 @@ async function run(){
     for(let c=5;c>0;c--){$('count').textContent=c;await wait(Math.max(0,t0+(6-c)*1000-performance.now()));}
     clearTimeout(tm);$('count').textContent='';
     if(!sp)sp=still();
-    const fb=frame();flash();
-    const res=await sp,pic=res.c||fb;
-    if(!res.c)pic.info=fb.info+(res.why?' ('+res.why+')':'');
-    shots.push(pic);await wait(700);
+    flash();
+    const res=await sp;
+    if(!res.c){$('step').textContent='';say('Fotot misslyckades ('+res.why+'). Försök igen.');$('setup').hidden=false;busy=false;return;}
+    shots.push(res.c);await wait(700);
   }
   $('step').textContent='';
   compose(shots);busy=false;
