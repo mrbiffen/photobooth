@@ -57,6 +57,7 @@ button.ghost{padding:10px 14px;color:var(--ink);background:transparent;border:1.
 .row{display:grid;gap:10px}
 .hint{margin:0;color:var(--mute);font-size:14px;text-align:center}
 details button{margin-top:10px}
+details .field{margin-top:12px}
 details summary{cursor:pointer;color:var(--mute);font-size:14px;padding:4px 0}
 input[type=range]{width:100%;accent-color:var(--accent)}
 #sheet{display:none}
@@ -108,6 +109,10 @@ button.primary{padding:12px;font-size:18px}
     <details><summary>Inställningar</summary>
       <label class="field">Avtryck tidigare: <span><span id="leadv">1200</span> ms</span>
         <input id="lead" type="range" min="0" max="3000" step="100" value="1200"></label>
+      <label class="field">Marginal runt bilden: <span><span id="mgv">0</span> mm</span>
+        <input id="mg" type="range" min="0" max="8" step="0.5" value="0"></label>
+      <label class="field">Flytta i sidled: <span><span id="sxv">0</span> mm</span>
+        <input id="sx" type="range" min="-6" max="6" step="0.5" value="0"></label>
       <button id="rotb" class="ghost" type="button">Rotera kamerabild</button>
     </details>
     <button id="go" class="primary" type="button" disabled>Ta bilder</button>
@@ -115,6 +120,7 @@ button.primary{padding:12px;font-size:18px}
 
   <section id="done" class="row" hidden>
     <button id="print" class="primary" type="button">Skriv ut</button>
+    <button id="share" class="ghost" type="button">Skicka till Canon PRINT</button>
     <button id="save" class="ghost" type="button">Spara på telefonen</button>
     <button id="again" class="ghost" type="button">Ta nya bilder</button>
     <p id="hint" class="hint">Välj pappersstorlek 10×15 cm i utskriftsdialogen.</p>
@@ -130,7 +136,7 @@ const L={
   strip:{n:4,ty:1730,sz:64,tw:520,tx:[300,900],r:[[40,40,520,390],[40,450,520,390],[40,860,520,390],[40,1270,520,390],[640,40,520,390],[640,450,520,390],[640,860,520,390],[640,1270,520,390]]},
   grid:{n:4,ty:1650,sz:92,tw:1080,tx:[600],r:[[60,60,525,690],[615,60,525,690],[60,780,525,690],[615,780,525,690]]}
 };
-let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[],lastCanvas=null;
+let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[],lastCanvas=null,lastBlob=null;
 const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 function fit(){
@@ -188,7 +194,7 @@ function cover(x,s,dx,dy,dw,dh){
 function flash(){const f=$('flash');f.classList.add('on');setTimeout(()=>f.classList.remove('on'),120);}
 
 function compose(shots){
-  const c=document.createElement('canvas');c.width=1200;c.height=1800;
+  let c=document.createElement('canvas');c.width=1200;c.height=1800;
   const x=c.getContext('2d');
   x.fillStyle='#fff';x.fillRect(0,0,1200,1800);
   const P=L[layout];P.r.forEach((r,i)=>cover(x,shots[i%shots.length],r[0],r[1],r[2],r[3]));
@@ -199,7 +205,15 @@ function compose(shots){
     do{x.font='800 '+s+'px "Bricolage Grotesque",system-ui,sans-serif';s-=4;}while(x.measureText(t).width>P.tw&&s>28);
     P.tx.forEach(px=>x.fillText(t,px,P.ty));
   }
+  {const pad=+$('mg').value||0,dx=+$('sx').value||0;
+   if(pad||dx){
+     const f=document.createElement('canvas');f.width=1200;f.height=1800;
+     const fx=f.getContext('2d');fx.fillStyle='#fff';fx.fillRect(0,0,1200,1800);
+     const s=(1200-24*pad)/1200,w=1200*s,h=1800*s;
+     fx.drawImage(c,(1200-w)/2+dx*12,(1800-h)/2,w,h);c=f;
+   }}
   lastCanvas=c;
+  c.toBlob(b=>{lastBlob=b;},'image/jpeg',.92);
   {const f=shots.filter(s=>s.info),st=f.filter(s=>s.info.startsWith('Stillfoto')).length;
    $('info').textContent=f.length?st+' av '+f.length+' stillfoton. '+f[f.length-1].info:'';}
   const url=c.toDataURL('image/jpeg',.92);
@@ -257,6 +271,14 @@ $('save').addEventListener('click',()=>{
     $('hint').textContent='Sparad i mappen Hämtade filer på telefonen.';
   },'image/jpeg',.92);
 });
+$('share').addEventListener('click',async()=>{
+  if(!lastBlob)return;
+  const f=new File([lastBlob],'fotobas.jpg',{type:'image/jpeg'});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f]});
+    else $('hint').textContent='Delning av bilder stöds inte här.';
+  }catch(e){if(e.name!=='AbortError')$('hint').textContent='Delning misslyckades ('+e.name+').';}
+});
 let rot=0;
 const ang=()=>(screen.orientation&&screen.orientation.angle!=null)?screen.orientation.angle:(window.orientation||0);
 const effRatio=()=>rot%180?cam.videoHeight/cam.videoWidth:cam.videoWidth/cam.videoHeight;
@@ -278,6 +300,12 @@ const lead=$('lead');
 try{const s=localStorage.getItem('lead');if(s!==null)lead.value=s;}catch(e){}
 function showLead(){$('leadv').textContent=lead.value;try{localStorage.setItem('lead',lead.value);}catch(e){}}
 lead.addEventListener('input',showLead);showLead();
+['mg','sx'].forEach(id=>{
+  const el=$(id);
+  try{const s=localStorage.getItem(id);if(s!==null)el.value=s;}catch(e){}
+  const sh=()=>{$(id+'v').textContent=el.value;try{localStorage.setItem(id,el.value);}catch(e){}};
+  el.addEventListener('input',sh);sh();
+});
 cam.addEventListener('loadedmetadata',loadRot);cam.addEventListener('resize',loadRot);
 if(screen.orientation)screen.orientation.addEventListener('change',()=>setTimeout(loadRot,200));
 window.addEventListener('orientationchange',()=>setTimeout(loadRot,200));
