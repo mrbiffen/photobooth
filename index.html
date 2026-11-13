@@ -109,10 +109,16 @@ button.primary{padding:12px;font-size:18px}
     <details><summary>Inställningar</summary>
       <label class="field">Avtryck tidigare: <span><span id="leadv">1200</span> ms</span>
         <input id="lead" type="range" min="0" max="3000" step="100" value="1200"></label>
-      <label class="field">Marginal runt bilden: <span><span id="mgv">0</span> mm</span>
-        <input id="mg" type="range" min="0" max="8" step="0.5" value="0"></label>
+      <label class="field">Marginal i sidorna: <span><span id="ixv">2</span> mm</span>
+        <input id="ix" type="range" min="0" max="10" step="0.5" value="2"></label>
+      <label class="field">Marginal upptill: <span><span id="itv">2</span> mm</span>
+        <input id="it" type="range" min="0" max="10" step="0.5" value="2"></label>
+      <label class="field">Marginal nedtill: <span><span id="ibv">4</span> mm</span>
+        <input id="ib" type="range" min="0" max="12" step="0.5" value="4"></label>
       <label class="field">Flytta i sidled: <span><span id="sxv">0</span> mm</span>
-        <input id="sx" type="range" min="-6" max="6" step="0.5" value="0"></label>
+        <input id="sx" type="range" min="-8" max="8" step="0.5" value="0"></label>
+      <label class="field">Flytta i höjdled: <span><span id="syv">0</span> mm</span>
+        <input id="sy" type="range" min="-8" max="8" step="0.5" value="0"></label>
       <button id="rotb" class="ghost" type="button">Rotera kamerabild</button>
     </details>
     <button id="go" class="primary" type="button" disabled>Ta bilder</button>
@@ -131,17 +137,27 @@ button.primary{padding:12px;font-size:18px}
 
 <script>
 const $=id=>document.getElementById(id);
-const L={
-  single:{n:1,ty:1640,sz:92,tw:1080,tx:[600],r:[[60,60,1080,1380]]},
-  strip:{n:4,ty:1730,sz:64,tw:520,tx:[300,900],r:[[40,40,520,390],[40,450,520,390],[40,860,520,390],[40,1270,520,390],[640,40,520,390],[640,450,520,390],[640,860,520,390],[640,1270,520,390]]},
-  grid:{n:4,ty:1650,sz:92,tw:1080,tx:[600],r:[[60,60,525,690],[615,60,525,690],[60,780,525,690],[615,780,525,690]]}
-};
+const L={single:{n:1},strip:{n:4},grid:{n:4}};
+const S=()=>({ix:+$('ix').value||0,it:+$('it').value||0,ib:+$('ib').value||0,dx:+$('sx').value||0,dy:+$('sy').value||0});
+function plan(k){
+  const {ix,it,ib,dx,dy}=S(),m=3,g=2,th=k==='strip'?11:15,P=12;
+  const x0=ix+m,x1=100-ix-m,y0=it+m,yb=148-ib-th-2,ty=148-ib-th/2;
+  let r=[],tx=[50],tw=x1-x0;
+  if(k==='single'){r=[[x0,y0,x1-x0,yb-y0]];}
+  else if(k==='grid'){const w=(x1-x0-g)/2,h=(yb-y0-g)/2;r=[[x0,y0,w,h],[x0+w+g,y0,w,h],[x0,y0+h+g,w,h],[x0+w+g,y0+h+g,w,h]];}
+  else{
+    const pw=50-2*(ix+m),ph=(yb-y0-3*g)/4;
+    for(const sx of [ix+m,50+ix+m])for(let i=0;i<4;i++)r.push([sx,y0+i*(ph+g),pw,ph]);
+    tx=[25,75];tw=pw;
+  }
+  return {r:r.map(a=>[(a[0]+dx)*P,(a[1]+dy)*P,a[2]*P,a[3]*P]),tx:tx.map(v=>(v+dx)*P),ty:(ty+dy)*P,tw:tw*P,sz:k==='strip'?64:92};
+}
 let layout='strip',facing='user',stream=null,busy=false,mode='live',fshots=[],lastCanvas=null,lastBlob=null;
 const cam=$('cam'),wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 function fit(){
   const vw=cam.videoWidth,vh=cam.videoHeight;if(!vw||!vh)return;
-  const v=effRatio(),r=L[layout].r[0],a=r[2]/r[3],w=a>v?1:a/v,h=a>v?v/a:1,g=$('guide').style;
+  const v=effRatio(),r=plan(layout).r[0],a=r[2]/r[3],w=a>v?1:a/v,h=a>v?v/a:1,g=$('guide').style;
   $('vf').style.setProperty('--ar',v.toFixed(3));
   g.width=(w*100)+'%';g.height=(h*100)+'%';g.left=((1-w)*50)+'%';g.top=((1-h)*50)+'%';
 }
@@ -197,21 +213,14 @@ function compose(shots){
   let c=document.createElement('canvas');c.width=1200;c.height=1800;
   const x=c.getContext('2d');
   x.fillStyle='#fff';x.fillRect(0,0,1200,1800);
-  const P=L[layout];P.r.forEach((r,i)=>cover(x,shots[i%shots.length],r[0],r[1],r[2],r[3]));
-  if(layout==='strip'){x.strokeStyle='#cfcfd6';x.lineWidth=2;x.setLineDash([14,14]);x.beginPath();x.moveTo(600,0);x.lineTo(600,1800);x.stroke();x.setLineDash([]);}
+  const P=plan(layout);P.r.forEach((r,i)=>cover(x,shots[i%shots.length],r[0],r[1],r[2],r[3]));
+  if(layout==='strip'){x.strokeStyle='#cfcfd6';x.lineWidth=2;x.setLineDash([14,14]);x.beginPath();const cl=600+S().dx*12;x.moveTo(cl,0);x.lineTo(cl,1800);x.stroke();x.setLineDash([]);}
   const t=$('title').value.trim();
   if(t){
     let s=P.sz;x.textAlign='center';x.textBaseline='middle';x.fillStyle='#1d1b2e';
     do{x.font='800 '+s+'px "Bricolage Grotesque",system-ui,sans-serif';s-=4;}while(x.measureText(t).width>P.tw&&s>28);
     P.tx.forEach(px=>x.fillText(t,px,P.ty));
   }
-  {const pad=+$('mg').value||0,dx=+$('sx').value||0;
-   if(pad||dx){
-     const f=document.createElement('canvas');f.width=1200;f.height=1800;
-     const fx=f.getContext('2d');fx.fillStyle='#fff';fx.fillRect(0,0,1200,1800);
-     const s=(1200-24*pad)/1200,w=1200*s,h=1800*s;
-     fx.drawImage(c,(1200-w)/2+dx*12,(1800-h)/2,w,h);c=f;
-   }}
   lastCanvas=c;
   c.toBlob(b=>{lastBlob=b;},'image/jpeg',.92);
   {const f=shots.filter(s=>s.info),st=f.filter(s=>s.info.startsWith('Stillfoto')).length;
@@ -300,11 +309,11 @@ const lead=$('lead');
 try{const s=localStorage.getItem('lead');if(s!==null)lead.value=s;}catch(e){}
 function showLead(){$('leadv').textContent=lead.value;try{localStorage.setItem('lead',lead.value);}catch(e){}}
 lead.addEventListener('input',showLead);showLead();
-['mg','sx'].forEach(id=>{
+['ix','it','ib','sx','sy'].forEach(id=>{
   const el=$(id);
   try{const s=localStorage.getItem(id);if(s!==null)el.value=s;}catch(e){}
   const sh=()=>{$(id+'v').textContent=el.value;try{localStorage.setItem(id,el.value);}catch(e){}};
-  el.addEventListener('input',sh);sh();
+  el.addEventListener('input',()=>{sh();fit();});sh();
 });
 cam.addEventListener('loadedmetadata',loadRot);cam.addEventListener('resize',loadRot);
 if(screen.orientation)screen.orientation.addEventListener('change',()=>setTimeout(loadRot,200));
